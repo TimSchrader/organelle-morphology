@@ -5,7 +5,7 @@ from scipy.spatial import KDTree
 import trimesh
 
 import numpy as np
-from multiprocessing import Pool
+from multiprocessing import Pool, set_start_method
 import pandas as pd
 
 from tqdm import tqdm
@@ -283,6 +283,14 @@ def generate_distance_matrix(
             meshes.append(organelle.mesh)
             bounding_boxes.append(bounding_box_delayed(organelle.mesh))
         meshes = persist(*meshes)
+
+        try:
+            set_start_method("spawn", force=True)
+        except RuntimeError as e:
+            logger.warning(
+                f"Failed to force 'spawn' start method for multiprocessing: {e}"
+            )
+
         # WHY is this single threaded?? maybe bad distribution between workers
         with span("dist_matrix_bounding_boxes"):
             # bounding_boxes = compute(bounding_boxes)[0]
