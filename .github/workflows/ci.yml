@@ -54,10 +54,10 @@ jobs:
       # This is a temporary modification to check for a race condition in the test_statistics_integration test.
       - name: Run Python tests (Deadlock Hunt)
         run: |
-          for i in {1..50}
+          for i in {1..100}
           do
           echo "Attempt $i"
-          python -m pytest tests/test_statistics.py::test_statistics_integration
+          python -m pytest
           if [ $? -ne 0 ]
           then
           exit 1
