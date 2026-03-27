@@ -250,6 +250,12 @@ class MembraneContactSiteCalculator:
             trimesh.repair.fix_normals(mesh)
 
 
+@delayed
+def _extract_bounds(materialized_mesh):
+    """Helper to extract bounding boxes purely on the worker side."""
+    return materialized_mesh.bounding_box.bounds
+
+
 def generate_distance_matrix(
     project: "organelle_morphology.Project",
     domain_decomposition=True,
@@ -283,11 +289,10 @@ def generate_distance_matrix(
             meshes.append(organelle.mesh)
             # bounding_boxes.append(bounding_box_delayed(organelle.mesh))
         with span("dist_matrix_bounding_boxes"):
-            # bounding_boxes = compute(bounding_boxes)[0]
-            # with many meshes (20k) ~30% faster then computing directly:
-            bounding_boxes = project.client.gather(
-                project.client.map(lambda m: m.compute().bounding_box.bounds, meshes)
-            )
+            # Chain a delayed function over the mesh objects
+            bounds_tasks = [_extract_bounds(m) for m in meshes]
+            # This is resolved on worker, only returns bounding box tuples to client
+            bounding_boxes = compute(*bounds_tasks)
         print(f"bounding_boxes {len(bounding_boxes)}")
 
         project.logger.info("Calculating distance matrix")
