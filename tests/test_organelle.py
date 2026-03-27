@@ -1,4 +1,5 @@
 import numpy as np
+from tqdm import tqdm
 
 from organelle_morphology.organelle import Mitochondrium
 
@@ -16,7 +17,7 @@ def test_organelle_init(project_with_sources):
 def test_organelle_curvature(project_with_sources, mocker):
     s = project_with_sources.sources["synth_data"]
     mock_calc = mocker.patch.object(s, "calc_curvature")
-    for org in project_with_sources.organelles:
+    for org in tqdm(project_with_sources.organelles):
         mock_calc.return_value = {org.label: np.ones((5,))}
         curv = org.curvature_map
         assert isinstance(curv, np.ndarray)

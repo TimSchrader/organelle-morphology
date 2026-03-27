@@ -8,6 +8,8 @@ import numpy as np
 from multiprocessing import Pool
 import pandas as pd
 
+from tqdm import tqdm
+
 import organelle_morphology
 from dask.base import compute
 
@@ -375,7 +377,7 @@ def generate_distance_matrix(
             results = compute(results)[0]
             results = [r for res in results for r in res]
 
-        for res in results:
+        for res in tqdm(results, "gathering distances"):
             distance_df.loc[res[0]] = res[1]
             distance_df.loc[res[0][::-1]] = res[1]
 
