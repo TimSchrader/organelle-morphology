@@ -284,11 +284,7 @@ def generate_distance_matrix(
         meshes = persist(*meshes)
 
         with span("dist_matrix_bounding_boxes"):
-            # bounding_boxes = compute(bounding_boxes)[0]
-            # with many meshes (20k) ~30% faster then computing directly:
-            bounding_boxes = project.client.gather(
-                project.client.map(lambda m: m.compute().bounding_box.bounds, meshes)
-            )
+            bounding_boxes = [m.bounding_box.bounds for m in compute(*meshes)]
         print(f"bounding_boxes {len(bounding_boxes)}")
 
         project.logger.info("Calculating distance matrix")
