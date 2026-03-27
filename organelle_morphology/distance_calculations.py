@@ -5,7 +5,6 @@ from scipy.spatial import KDTree
 import trimesh
 
 import numpy as np
-from multiprocessing import Pool, set_start_method
 import pandas as pd
 
 from tqdm import tqdm
@@ -284,14 +283,6 @@ def generate_distance_matrix(
             bounding_boxes.append(bounding_box_delayed(organelle.mesh))
         meshes = persist(*meshes)
 
-        try:
-            set_start_method("spawn", force=True)
-        except RuntimeError as e:
-            logger.warning(
-                f"Failed to force 'spawn' start method for multiprocessing: {e}"
-            )
-
-        # WHY is this single threaded?? maybe bad distribution between workers
         with span("dist_matrix_bounding_boxes"):
             # bounding_boxes = compute(bounding_boxes)[0]
             # with many meshes (20k) ~30% faster then computing directly:
@@ -357,8 +348,10 @@ def generate_distance_matrix(
                 box = (start, end)
                 tasks.append((box, bounding_boxes))
             # masks = list(map(lambda b: _check_overlap(b, bounding_boxes), tasks))
-            with Pool(processes=project.n_workers) as pool:
-                masks = pool.starmap(_check_overlap, tasks, chunksize=100)
+            with span("dist_matrix_overlap"):
+                # lambda unpacks the (box, bounding_boxes) tuple
+                futures = project.client.map(lambda args: _check_overlap(*args), tasks)
+                masks = project.client.gather(futures)
 
         else:
             # no domain decomposition -> all to all
