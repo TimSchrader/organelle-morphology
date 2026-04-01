@@ -1,18 +1,13 @@
 import logging
 from dask.delayed import Delayed
-from dask.base import compute
 import numpy as np
 import plotly.graph_objects as go
 import dask.array as da
-from collections import defaultdict
-import matplotlib.pyplot as plt
 
 
 import organelle_morphology
 from organelle_morphology.util import (
     bounding_box_delayed,
-    color_delayed_trimesh_vertices,
-    reset_color_delayed,
 )
 
 
@@ -32,7 +27,8 @@ class Organelle:
     def __init__(self, source: "organelle_morphology.DataSource", label: int):
         """The organelle base class
 
-        Holds references to its mesh and label. Also holds analysis results.
+        Holds references to its mesh and label.
+        Statistical data is managed centrally by the Project properties.
 
         Note that instances of Organelle typically are not instantiated directly,
         but through the corresponding subclass of OrganelleFactory.
@@ -44,12 +40,10 @@ class Organelle:
         self.source = source
         self.label = label
         self._organelle_id = f"{self._name}_{str(label).zfill(4)}"
-        self._mesh_properties = {}
+
+        # Keep heavy 3D objects locally
         self._skeleton = None
         self._sampled_skeleton = None
-        self._skeleton_info = {}
-        self._mcs = defaultdict(dict)
-        self._mcs_dict = defaultdict(dict)
 
     @classmethod
     def construct(cls, source, labels: list[int]):
@@ -137,18 +131,9 @@ class Organelle:
 
         # add coloration for the close regions
         if mcs_label:
-            intensity = np.zeros(len(verts))  # Default intensity is 0.5
-
-            for mcs_key, mcs in self.mcs.get(mcs_label, {}).items():
-                if mcs_filter_ids is not None:
-                    if mcs_key not in mcs_filter_ids:
-                        continue
-                t_close_vertices = np.transpose(mcs["vertices_index"])
-                intensity[t_close_vertices] = 1  # Close vertices have intensity 1
-            colorscale = [
-                [0, "rgb(110,150,220)"],
-                [1, "rgb(255,0,0)"],
-            ]  # Map intensity to color
+            self.logger.warning(
+                "MCS visualization is temporarily disabled during SoA refactor."
+            )
 
         go_mesh = go.Mesh3d(
             x=vertsT[0],
@@ -177,16 +162,13 @@ class Organelle:
 
     @property
     def skeleton_info(self):
-        # calculate some basic skeleton properties from the skeleton graph
+        """Get the skeleton info for this organelle from the central properties DataFrame."""
         if not self._skeleton:
             return None
-
-        if self._skeleton_info:
-            return self._skeleton_info
-
-    @skeleton_info.setter
-    def skeleton_info(self, value):
-        self._skeleton_info = value
+        df = self.source.project.properties._prop_df
+        if self.id in df.index:
+            return df.loc[self.id].to_dict()
+        return {}
 
     @property
     def sampled_skeleton(self):
@@ -213,25 +195,10 @@ class Organelle:
 
     def get_mesh_mcs_colored(self, mcs_label=None) -> Delayed:
         """Get mcs colored delayed meshes"""
-        cm = plt.get_cmap("tab20")
-        colored = self.mesh
-        if mcs_label is None:
-            labels = list(self.source.project.mcs_labels)
-            if len(labels) == 0:
-                self.logger.warning("No mcs data, first run project.search_mcs")
-                return colored
-            mcs_label = labels[0]
-
-        if mcs_partners_dict := self.mcs.get(mcs_label):
-            colored = reset_color_delayed(colored)
-            for i, mcs_dict in enumerate(mcs_partners_dict.values()):
-                j = i % 20
-                colored = color_delayed_trimesh_vertices(
-                    colored,
-                    mcs_dict["vertices_index"],
-                    [c * 255 for c in cm(j)],
-                )
-        return colored
+        self.logger.warning(
+            "MCS visualization is temporarily disabled during SoA refactor."
+        )
+        return self.mesh
 
     @property
     def id(self):
@@ -245,43 +212,19 @@ class Organelle:
 
     @property
     def geometric_data(self):
-        """Get the geometric data for this organelle
-        Possible keywords are:
-        "voxel_volume": for 3d this is the volume
-        "voxel_bbox",
-        "voxel_slice": the slice of the bounding box
-        "voxel_centroid"
-        "voxel_moments"
-        "voxel_extent": how much volume of the bounding box is occupied by the object
-        "voxel_solidity":ratio of pixels in the convex hull to those in the region
-
-        """
-        return self.source.basic_geometric_properties[self.id]
+        """Get the geometric data for this organelle from the central properties DataFrame."""
+        df = self.source.project.properties._prop_df
+        if self.id in df.index:
+            return df.loc[self.id].to_dict()
+        return {}
 
     @property
     def mesh_properties(self):
-        """Get the mesh data for this organelle"""
-        comp_level = self.source.project.compression_level
-
-        if comp_level not in self._mesh_properties:
-            mesh = self.mesh.compute()
-            self._mesh_properties[comp_level] = {}
-
-            self._mesh_properties[comp_level]["mesh_volume"] = mesh.volume
-            self._mesh_properties[comp_level]["mesh_area"] = mesh.area
-            self._mesh_properties[comp_level]["mesh_centroid"] = mesh.centroid
-            self._mesh_properties[comp_level]["mesh_inertia"] = mesh.moment_inertia
-
-            self._mesh_properties[comp_level]["water_tight"] = mesh.is_watertight
-            self._mesh_properties[comp_level]["sphericity"] = (
-                36 * np.pi * mesh.volume**2
-            ) ** (1 / 3) / mesh.area
-            dimensions = mesh.bounding_box_oriented.extents
-            self._mesh_properties[comp_level]["flatness_ratio"] = min(dimensions) / max(
-                dimensions
-            )
-
-        return self._mesh_properties[comp_level]
+        """Get the mesh data for this organelle from the central properties DataFrame."""
+        df = self.source.project.properties._prop_df
+        if self.id in df.index:
+            return df.loc[self.id].to_dict()
+        return {}
 
     @property
     def curvature_map(self) -> np.ndarray:
@@ -291,97 +234,6 @@ class Organelle:
     @property
     def curvature_mesh(self) -> Delayed:
         return self.source.get_meshes_curvature_colored(labels=self.label)[0]
-
-    def add_mcs(self, mcs_dict):
-        """Add mcs information to this organelle.
-
-        Args:
-            mcs_dict (dict): mcs_dict created by the MembraneContactSiteCalculator
-        """
-        mcs_target = mcs_dict["partner_id"]
-        mcs_label = mcs_dict["mcs_label"]
-
-        mcs_entry = {
-            "vertices_index": mcs_dict["vertices_index"],
-            "distances": mcs_dict["distances"],
-            "area": mcs_dict["area"],
-        }
-
-        self._mcs[mcs_label][mcs_target] = mcs_entry
-
-    def calc_mcs_dict_entry(self, mcs_label):
-        """
-        Calculate the properties of the mcs partners for the given mcs label
-
-        """
-
-        mcs_dict = self.mcs_dict[mcs_label]
-        surface = self.mesh.area
-        volume = self.mesh.volume
-        surface, volume = compute(surface, volume)
-
-        len_dist_list = []
-        mean_dist_list = []
-        std_dist_list = []
-        area_list = []
-
-        for entries in self.mcs[mcs_label].values():
-            mean_dist_list.append(np.mean(entries["distances"]))
-            std_dist_list.append(np.std(entries["distances"]))
-            len_dist_list.append(len(entries["distances"]))
-
-            area_list.append(entries["area"])
-
-        mean_dist_list = np.array(mean_dist_list)
-        std_dist_list = np.array(std_dist_list)
-        len_dist_list = np.array(len_dist_list)
-        if len(len_dist_list) == 0 or 0 in len_dist_list:
-            self.logger.debug(
-                "No distributions found for mcs %s in organelle %s", mcs_label, self
-            )
-            return
-
-        mcs_dict["n_contacts"] = len(len_dist_list)
-
-        mcs_dict["total_area"] = np.sum(entries["area"])
-        mcs_dict["mean_area"] = np.mean(area_list)
-
-        if len(area_list) == 1:
-            mcs_dict["std_area"] = 0
-        else:
-            mcs_dict["std_area"] = np.std(area_list)
-
-        # calculate the mean and std from the sub_mean and std values for each mcs partner
-        try:
-            overall_mean = np.average(mean_dist_list, weights=mean_dist_list)
-        except ZeroDivisionError:
-            overall_mean = 0
-
-        try:
-            overall_var = np.average(
-                (std_dist_list**2 + (mean_dist_list - overall_mean) ** 2),
-                weights=len_dist_list,
-            )
-        except ZeroDivisionError:
-            overall_var = 0
-        overall_std = np.sqrt(overall_var)
-
-        mcs_dict["mean_dist"] = overall_mean
-        mcs_dict["std_dist"] = overall_std
-
-        mcs_dict["n_contacts_per_area"] = mcs_dict["n_contacts"] / surface
-        mcs_dict["n_contacts_per_volume"] = mcs_dict["n_contacts"] / volume
-
-        mcs_dict["area_per_area"] = mcs_dict["total_area"] / surface
-        mcs_dict["area_per_volume"] = mcs_dict["total_area"] / volume
-
-    @property
-    def mcs(self) -> dict:
-        return self._mcs
-
-    @property
-    def mcs_dict(self):
-        return self._mcs_dict
 
     @property
     def data(self) -> da.Array:

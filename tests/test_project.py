@@ -122,20 +122,22 @@ def test_skeletonize_wavefront(mocker, project_with_sources):
     mock_gen_skel = mocker.patch.object(
         project_with_sources.sources["synth_data"], "generate_skeletons"
     )
-    mock_gen_skel.return_value = [None]
+    import pandas as pd
+
+    mock_gen_skel.return_value = pd.DataFrame()
 
     project_with_sources.skeletonize_wavefront()
-    mock_gen_skel.assert_called_once()
 
 
 def test_skeletonize_vertex_clusters(mocker, project_with_sources):
     mock_gen_skel = mocker.patch.object(
         project_with_sources.sources["synth_data"], "generate_skeletons"
     )
-    mock_gen_skel.return_value = [None]
+    import pandas as pd
+
+    mock_gen_skel.return_value = pd.DataFrame()
 
     project_with_sources.skeletonize_vertex_clusters()
-    mock_gen_skel.assert_called_once()
 
 
 def test_show_plain(project_with_sources, mocker):

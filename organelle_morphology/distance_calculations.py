@@ -14,6 +14,7 @@ import organelle_morphology
 from dask.base import compute
 
 from organelle_morphology.util import boxes_overlap
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -398,7 +399,7 @@ def generate_mcs(
     max_distance: float,
     min_distance: float = 0,
     overwrite=False,
-) -> str:
+) -> tuple[str, pd.DataFrame]:
     """Generates the MCS (Membrane Contact Site) pairs for a given project.
     The MCSs are calculated between two sets of organelles, defined by the
     two filter strings provided.
@@ -419,7 +420,8 @@ def generate_mcs(
             Defaults to False.
 
     Returns:
-        str: The label of this MCS search
+        tuple[str, pd.DataFrame]: The label of this MCS search and a DataFrame
+            containing the aggregated contact site statistics.
     """
 
     if max_distance > project.max_distance:
@@ -427,8 +429,9 @@ def generate_mcs(
     label_1 = ids_filter_1.replace("*", "")
     label_2 = ids_filter_2.replace("*", "")
     mcs_label = f"{min_distance}-{max_distance},{label_1}-{label_2}"
+
     if project._mcs_labels.get(mcs_label) and not overwrite:
-        return mcs_label
+        return mcs_label, pd.DataFrame()
 
     ids_1 = project.get_organelle_ids(ids_filter_1)
     ids_2 = project.get_organelle_ids(ids_filter_2)
@@ -478,34 +481,90 @@ def generate_mcs(
     results = compute(tasks)[0]
     logger.debug("Finished mcs calculations")
 
+    # Group interactions by organelle
+    interactions = defaultdict(list)
     org_ids = set()
     for id_1, id_2 in pairs:
-        org1 = project.get_organelles(id_1)[0]
-        org2 = project.get_organelles(id_2)[0]
+        mcs_source, mcs_target = results[id_1 + id_2]
+        interactions[mcs_source["self_id"]].append(mcs_source)
+        interactions[mcs_target["self_id"]].append(mcs_target)
         org_ids.add(id_1)
         org_ids.add(id_2)
 
-        mcs_source, mcs_target = results[id_1 + id_2]
+    rows = []
+    for org_id, partner_interactions in interactions.items():
+        len_dist_list = []
+        mean_dist_list = []
+        std_dist_list = []
+        area_list = []
 
-        # add mcs to organelle
-        if org1.id == mcs_source["self_id"]:
-            org1.add_mcs(mcs_source)
-            org2.add_mcs(mcs_target)
-        else:
-            org1.add_mcs(mcs_target)
-            org2.add_mcs(mcs_source)
+        for entry in partner_interactions:
+            dists = entry["distances"]
+            if len(dists) == 0:
+                continue
+            mean_dist_list.append(np.mean(dists))
+            std_dist_list.append(np.std(dists))
+            len_dist_list.append(len(dists))
+            area_list.append(entry["area"])
 
-    for org_id in org_ids:
-        org = project.get_organelles(org_id)[0]
-        org.calc_mcs_dict_entry(mcs_label)
-    logger.debug("Transfered mcs to organelles")
+        if not len_dist_list:
+            continue
+
+        mean_dist_list = np.array(mean_dist_list)
+        std_dist_list = np.array(std_dist_list)
+        len_dist_list = np.array(len_dist_list)
+        area_list = np.array(area_list)
+
+        n_contacts = len(len_dist_list)
+        total_area = np.sum(area_list)
+        mean_area = np.mean(area_list)
+        std_area = np.std(area_list) if len(area_list) > 1 else 0.0
+
+        try:
+            overall_mean = np.average(mean_dist_list, weights=len_dist_list)
+        except ZeroDivisionError:
+            overall_mean = 0.0
+
+        try:
+            overall_var = np.average(
+                (std_dist_list**2 + (mean_dist_list - overall_mean) ** 2),
+                weights=len_dist_list,
+            )
+        except ZeroDivisionError:
+            overall_var = 0.0
+        overall_std = np.sqrt(overall_var)
+
+        # Get surface and volume
+        mesh = meshes[org_id]
+        surface, volume = compute(mesh.area, mesh.volume)
+
+        row = {
+            "ID": org_id,
+            f"{mcs_label}-n_contacts": n_contacts,
+            f"{mcs_label}-total_area": total_area,
+            f"{mcs_label}-mean_area": mean_area,
+            f"{mcs_label}-std_area": std_area,
+            f"{mcs_label}-mean_dist": overall_mean,
+            f"{mcs_label}-std_dist": overall_std,
+            f"{mcs_label}-n_contacts_per_area": n_contacts / surface if surface else 0,
+            f"{mcs_label}-n_contacts_per_volume": n_contacts / volume if volume else 0,
+            f"{mcs_label}-area_per_area": total_area / surface if surface else 0,
+            f"{mcs_label}-area_per_volume": total_area / volume if volume else 0,
+        }
+        rows.append(row)
+
+    mcs_df = pd.DataFrame(rows)
+    if not mcs_df.empty:
+        mcs_df.set_index("ID", inplace=True)
+
+    logger.debug("Transferred mcs to dataframe")
 
     project._mcs_labels[mcs_label] = {
         "max_distance": max_distance,
         "min_distance": min_distance,
         "organelles": org_ids,
     }
-    return mcs_label
+    return mcs_label, mcs_df
 
 
 @delayed

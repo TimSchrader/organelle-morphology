@@ -8,6 +8,7 @@ from trimesh import Trimesh
 import trimesh
 from organelle_morphology.organelle import Organelle
 from organelle_morphology.source import DataSource
+from organelle_morphology.properties import Properties
 from organelle_morphology.util import (
     Cache,
     corners_to_edges,
@@ -235,22 +236,22 @@ class Project:
         org_per_source: dict[DataSource, list[Organelle]] = defaultdict(list)
         for o in orgs:
             org_per_source[o.source].append(o)
-        calculated_orgs = []
+
         for s, o_s in org_per_source.items():
             labels = [o.label for o in o_s]
-            calculated_orgs.extend(
-                s.generate_skeletons(
-                    labels=labels,
-                    skeletonization_type="wavefront",
-                    theta=theta,
-                    waves=waves,
-                    step_size=step_size,
-                    path_sample_dist=path_sample_dist,
-                    recompute=recompute,
-                )
+            skel_df = s.generate_skeletons(
+                labels=labels,
+                skeletonization_type="wavefront",
+                theta=theta,
+                waves=waves,
+                step_size=step_size,
+                path_sample_dist=path_sample_dist,
+                recompute=recompute,
             )
+            if skel_df is not None and not skel_df.empty:
+                self.properties.update(skel_df)
+
         self.logger.info("Skeletonization done!")
-        return calculated_orgs
 
     def skeletonize_vertex_clusters(
         self,
@@ -264,28 +265,28 @@ class Project:
         orgs = self.get_organelles(ids=ids)
 
         self.logger.info(
-            f"Starting Skeleton wavefront generation for {len(orgs)} organelles. "
+            f"Starting Skeleton vertex cluster generation for {len(orgs)} organelles. "
         )
 
         org_per_source: dict[DataSource, list[Organelle]] = defaultdict(list)
         for o in orgs:
             org_per_source[o.source].append(o)
-        calculated_orgs = []
+
         for s, o_s in org_per_source.items():
             labels = [o.label for o in o_s]
-            calculated_orgs.extend(
-                s.generate_skeletons(
-                    labels=labels,
-                    skeletonization_type="vertex_clusters",
-                    theta=theta,
-                    epsilon=epsilon,
-                    sampling_dist=sampling_dist,
-                    path_sample_dist=path_sample_dist,
-                    recompute=recompute,
-                )
+            skel_df = s.generate_skeletons(
+                labels=labels,
+                skeletonization_type="vertex_clusters",
+                theta=theta,
+                epsilon=epsilon,
+                sampling_dist=sampling_dist,
+                path_sample_dist=path_sample_dist,
+                recompute=recompute,
             )
+            if skel_df is not None and not skel_df.empty:
+                self.properties.update(skel_df)
+
         self.logger.info("Skeletonization done!")
-        return calculated_orgs
 
     def show(
         self,
@@ -656,7 +657,7 @@ class Project:
             str: The label of this mcs search
         """
 
-        return generate_mcs(
+        mcs_label, mcs_df = generate_mcs(
             self,
             ids_filter_1=ids_filter_1,
             ids_filter_2=ids_filter_2,
@@ -664,6 +665,10 @@ class Project:
             min_distance=min_distance,
             overwrite=overwrite_mcs_label,
         )
+        if mcs_df is not None and not mcs_df.empty:
+            self.properties.update(mcs_df)
+
+        return mcs_label
 
     @property
     def mcs_labels(self):
@@ -691,32 +696,15 @@ class Project:
         return fig
 
     def hist_skeletons(self, ids="*", attribute="num_nodes"):
-        """Plot the histogram from the skeleton info.
+        """Plot the histogram from the skeleton info."""
+        df = self.properties.get_dataframe(ids=ids, properties=[attribute])
+        if df.empty or attribute not in df.columns:
+            self.logger.warning(
+                f"Attribute '{attribute}' not found for selection '{ids}'"
+            )
+            return go.Figure()
 
-        :param ids: Filter id, defaults to "*"
-        :type ids: str, optional
-        :param attribute: which attribute to plot, defaults to "num_nodes".
-            can be:
-            "num_nodes": number of nodes in the skeleton
-            "num_branch_points": number of branch points in the skeleton
-            "end points": number of end points in the skeleton
-            "total_length": total length of the skeleton
-            "mean_length": mean length of the skeleton
-            "longest_path": longest path in the skeleton
-
-        :type attribute: str, optional
-        :return: _description_
-        :rtype: _type_
-        """
-        orgs = self.get_organelles(ids=ids)
-        # drop organelles without skeleton
-        valid_orgs = []
-        for org in orgs:
-            if org.skeleton is not None:
-                valid_orgs.append(org.id)
-
-        skeleton_info = self.skeleton_info.loc[valid_orgs]
-        data = skeleton_info[attribute].values
+        data = df[attribute].dropna().values
         fig = go.Figure()
         fig.add_trace(go.Histogram(x=data))
         fig.update_layout(
@@ -783,6 +771,51 @@ class Project:
 
         df = pd.DataFrame(properties).T
         return df
+
+    def compute_geometry(self):
+        """Computes regionprops and mesh properties, updating the central dataframe."""
+        self.logger.info("Computing geometric and mesh properties...")
+
+        # 1. Get regionprops (voxel_solidity, voxel_extent, etc.) from sources
+        geo_dfs = []
+        for source in self.sources.values():
+            geo_dfs.append(source.basic_geometric_properties)
+
+        if geo_dfs:
+            combined_geo_df = pd.concat(geo_dfs)
+            self.properties.update(combined_geo_df)
+
+        # 2. Compute mesh properties (volume, area, sphericity, etc.)
+        mesh_data = []
+        for org in self.organelles:
+            mesh = org.mesh.compute()
+            row = {"ID": org.id}
+
+            row["mesh_volume"] = mesh.volume
+            row["mesh_area"] = mesh.area
+            row["mesh_centroid"] = mesh.centroid
+            row["mesh_inertia"] = mesh.moment_inertia
+            row["water_tight"] = mesh.is_watertight
+
+            if mesh.area > 0:
+                row["sphericity"] = (36 * np.pi * mesh.volume**2) ** (1 / 3) / mesh.area
+            else:
+                row["sphericity"] = 0.0
+
+            dimensions = mesh.bounding_box_oriented.extents
+            if max(dimensions) > 0:
+                row["flatness_ratio"] = min(dimensions) / max(dimensions)
+            else:
+                row["flatness_ratio"] = 0.0
+
+            mesh_data.append(row)
+
+        if mesh_data:
+            mesh_df = pd.DataFrame(mesh_data)
+            mesh_df.set_index("ID", inplace=True)
+            self.properties.update(mesh_df)
+
+        self.logger.info("Geometry and mesh properties updated.")
 
     def get_mcs_properties(self, ids="*", mcs_labels: Optional[list] = None):
         """The properties of the MCS between organelles
@@ -930,15 +963,24 @@ class Project:
                 e.g "mito" or "er".
             cutoff: The cutoff value between 0 and 1.
         """
-        geo_props = self.geometric_properties
+        df = self.properties.get_dataframe(properties=["voxel_volume"])
+        if df.empty or "voxel_volume" not in df.columns:
+            self.logger.warning(
+                "Voxel volume data not available. Skipping size filtering."
+            )
+            return
+
+        # Ensure ID is index for easier manipulation
+        df = df.set_index("ID")
+
         self.logger.info(
             f"Filtering organelles of type {organelle_type} to the largest "
             f"organelles that make up {cutoff * 100}% of the total volume."
         )
 
-        df_sorted = geo_props.loc[
-            geo_props.index.str.contains(organelle_type)
-        ].sort_values("voxel_volume", ascending=False)
+        df_sorted = df.loc[df.index.str.contains(organelle_type)].sort_values(
+            "voxel_volume", ascending=False
+        )
         df_sorted["cumulative_volume"] = df_sorted["voxel_volume"].cumsum()
 
         # get the n largest organelles that make up the cutoff volume of the total volume
@@ -1160,9 +1202,7 @@ class Project:
     def clear_memory_cache(self):
         """(Re)initialize project-level storage."""
 
-        self._basic_geometric_properties = {}
-        self._mesh_properties = {}
-        self._geometric_properties = {}
+        self.properties = Properties(self)
         self._curvature_map = {}
         self._mcs_labels = {}  # {label: {max_distance: float, min_distance: float}}
         self._max_compute_distance = 0.0

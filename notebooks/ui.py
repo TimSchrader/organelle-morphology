@@ -16,7 +16,6 @@ with app.setup:
     from dask.base import compute
     import pandas as pd
     import traceback
-    from organelle_morphology.statistics import Statistics
     import matplotlib.pyplot as plt
 
 
@@ -609,20 +608,18 @@ def geo_calc_ui_cell(sources):
 @app.cell
 def geo_execute_cell(project, run_geo_btn):
     mo.stop(not run_geo_btn.value, mo.md(""))
-    geo_df = (
-        project.geometric_properties
-    )  # Accessing the property triggers the computation and caching
-    geo_execute_status = mo.md(
-        f"Geometry properties computed for {len(geo_df)} organelles."
-    )
+
+    project.compute_geometry()
+
+    geo_execute_status = mo.md("Geometry properties successfully computed and stored.")
     geo_execute_status
     return
 
 
 @app.cell
 def prop_selector_cell(project):
-    stats = Statistics(project)
-    available_properties = stats.get_properties()
+    stats = project.properties
+    available_properties = stats.get_available_properties()
 
     # Convert the list of available_properties keys into a dictionary of checkboxes
     properties_checkboxes = {}
@@ -644,20 +641,22 @@ def prop_display_cell(calc_stats_btn, mesh_id_filter, project, prop_selector):
 
     if calc_stats_btn.value:
         try:
-            display_stats = Statistics(project)
+            display_stats = project.properties
 
             # Get the list of internal keys from the checkbox dictionary
             selected_properties = [
                 key for key, checked in prop_selector.value.items() if checked
             ]
 
-            # Generate the raw data table
+            # Generate the raw data table (still needed for the UI scatter plots & raw data view)
             df_data = display_stats.get_dataframe(
                 ids=mesh_id_filter.value, properties=selected_properties
             )
 
-            # Generate the statistical summary table
-            df_summary = display_stats.get_summary_dataframe(df_data)
+            # Generate the statistical summary table and trigger the internal aggregate update
+            df_summary = display_stats.get_summary_dataframe(
+                ids=mesh_id_filter.value, properties=selected_properties
+            )
 
             if not df_data.empty:
                 # Identify column types for specialized formatting

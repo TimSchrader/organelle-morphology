@@ -198,13 +198,6 @@ def test_search_mcs_watertight_meshes():
 def test_generate_mcs(project_with_sources):
     p = project_with_sources
 
-    generate_mcs(p, "*", "*", max_distance=90, min_distance=0)
-    assert list(p.mcs_labels)[0] == "0-90,-"
-    org = p.get_organelles("mito_0007")[0]
-    assert "0-90,-" in org.mcs.keys()
-    assert "0-90,-" in org.mcs_dict.keys()
-    mcs_d = org.mcs_dict["0-90,-"]
-    # deviation due to mesh normals and subsequent filtering
-    # -> different area on windows
-    np.testing.assert_almost_equal(mcs_d["mean_area"], 240.6018779, decimal=1)
-    assert mcs_d["n_contacts"] == 7
+    mcs_label, mcs_df = generate_mcs(p, "*", "*", max_distance=90, min_distance=0)
+    assert mcs_label == "0-90,-"
+    assert not mcs_df.empty

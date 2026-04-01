@@ -19,6 +19,7 @@ import skeletor as sk
 
 import fnmatch
 import numpy as np
+import pandas as pd
 import xml.etree.ElementTree as ET
 from skimage.measure import regionprops
 from dataclasses import dataclass, field
@@ -408,7 +409,7 @@ class DataSource:
         return self._metadata
 
     @property
-    def basic_geometric_properties(self):
+    def basic_geometric_properties(self) -> pd.DataFrame:
         """get basic properties from scikit-image"""
 
         self.logger.debug("get basic properties from scikit-image")
@@ -429,13 +430,17 @@ class DataSource:
                 "voxel_solidity": "solidity",  # ratio of pixels in the convex hull to those in the region
             }
 
-            self.cache["basic_geo_props"] = {
+            prop_dict = {
                 f"{self.org_name}_{str(region['label']).zfill(4)}": {
                     prop_name: region[prop]
                     for prop_name, prop in filtered_region_props.items()
                 }
                 for region in geometric_properties
             }
+
+            df = pd.DataFrame.from_dict(prop_dict, orient="index")
+            df.index.name = "ID"
+            self.cache["basic_geo_props"] = df
 
         return self.cache["basic_geo_props"]
 
@@ -1144,7 +1149,7 @@ class DataSource:
         sampling_dist: float = 0.1,
         path_sample_dist: float = 0.1,
         recompute: bool = False,
-    ):
+    ) -> pd.DataFrame:
         """
         Generates a skeleton for the organelle.
         The skeleton is generated and cleaned using the skeletor library.
@@ -1170,7 +1175,7 @@ class DataSource:
             path_sample_dist: The distance between the sample points on the skeleton
                 arms. The higher the distance, the less sample points are used.
         Returns:
-            List of organelles which have a skeleton.
+            Pandas DataFrame containing the computed skeleton_info mapped to organelle IDs.
 
         """
 
@@ -1260,9 +1265,9 @@ class DataSource:
         for label in labels:
             o = organelles_labeled[label]
             if o.skeleton is not None and not recompute:
-                tasks.append(
-                    ((o.skeleton, o.skeleton_info, o.sampled_skeleton, label), "")
-                )
+                # If we are not recomputing, we extract the cached dataframe row
+                cached_info = o.skeleton_info
+                tasks.append(((o.skeleton, cached_info, o.sampled_skeleton, label), ""))
                 continue
 
             dmesh = self.meshes[label]
@@ -1282,15 +1287,27 @@ class DataSource:
 
         results = compute(*tasks)
 
-        orgs = []
+        skel_data = []
         for result in results:
             if result[0] is None:
                 self.logger.debug(result[1])
                 continue
 
             skel, skeleton_info, sampled_skeleton, label = result[0]
-            organelles_labeled[label].skeleton = skel
-            organelles_labeled[label].skeleton_info = skeleton_info
-            organelles_labeled[label].sampled_skeleton = sampled_skeleton
-            orgs.append(organelles_labeled[label])
-        return orgs
+            org = organelles_labeled[label]
+
+            # Persist 3D objects locally
+            org.skeleton = skel
+            org.sampled_skeleton = sampled_skeleton
+
+            # Pack statistical/geometric data into the tabular payload
+            row = {"ID": org.id}
+            row.update(skeleton_info)
+            skel_data.append(row)
+
+        if skel_data:
+            skel_df = pd.DataFrame(skel_data)
+            skel_df.set_index("ID", inplace=True)
+            return skel_df
+
+        return pd.DataFrame()
