@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.13"
 app = marimo.App(
     width="medium",
     app_title="Organelle Morphology",
@@ -1425,11 +1425,16 @@ def _(record_counts, records_save_button, records_update_button):
     record_count_to_table = []
     if len(record_counts):
         record_count_to_table = record_counts
+    records_table = mo.ui.table(
+        record_count_to_table, selection=None, pagination=True, page_size=5
+    )
 
     mo.vstack(
         [
             mo.md("## Analysis Records"),
-            mo.ui.table(record_count_to_table, selection=None),
+            mo.vstack([records_table]).style(
+                {"max-height": "250px", "overflow-y": "auto"}
+            ),
             mo.hstack(
                 [
                     records_update_button,
