@@ -611,57 +611,75 @@ def _(cache_info_button, project):
 
 
 @app.cell
-def _(box_dict, mesh_id_filter, project):
-    def ids_in_box(_):
-        orgs = project.get_organelles(ids=mesh_id_filter.value)
-        source = list(project.sources.values())[0]
-        _scaling = np.array(source.metadata.size) * source.data_resolution
-        _box = (
-            np.array(
-                (
-                    box_dict["lower_x"].value,
-                    box_dict["lower_y"].value,
-                    box_dict["lower_z"].value,
-                )
-            )
-            * _scaling
-            * 0.01,
-            np.array(
-                (
-                    box_dict["upper_x"].value,
-                    box_dict["upper_y"].value,
-                    box_dict["upper_z"].value,
-                )
-            )
-            * _scaling
-            * 0.01,
-        )
-        result = []
-        bbs = [(o, bounding_box_delayed(o.mesh)) for o in orgs]
-        bbs = compute(*bbs)
-        for o, bb in bbs:
-            if np.all(bb[0] >= _box[0]) and np.all(bb[1] <= _box[1]):
-                result.append(o.id)
+def get_ids_ui_cell():
+    get_ids_box_btn = mo.ui.run_button(label="Get IDs")
+    mo.md(f"<h3>Show IDs of Organelles in the box.</h3>{get_ids_box_btn}")
+    return (get_ids_box_btn,)
 
-        first = [n.split("_")[0] for n in result]
-        orgs, counts = np.unique(first, return_counts=True)
-        orgs = " , ".join([o + r"_\*" for o in orgs])
-        output = (
-            mo.md(f"Organelles: {orgs}<br>Counts: {counts}"),
-            pd.DataFrame(result, columns=["IDs"]),
-        )
 
-        mo.output.replace(output)
-        return result
+@app.cell
+def get_ids_execution_cell(box_dict, get_ids_box_btn, mesh_id_filter, project):
+    mo.stop(not get_ids_box_btn.value, mo.md("*Click 'Get IDs' to see results here.*"))
 
-    box_dict  # control flow
-    mesh_id_filter  # control flow
-    get_ids_box_ui = mo.ui.button(on_click=ids_in_box, label="Get IDs", value=None)
-    mo.md(
-        "<h3>Show IDs of Organelles in the box.</h3>"
-        "Change the box in the `Show mesh` panel.<br>"
-        f"{get_ids_box_ui}"
+    orgs_get_ids = project.get_organelles(ids=mesh_id_filter.value)
+    source_get_ids = list(project.sources.values())[0]
+    _scaling_get_ids = (
+        np.array(source_get_ids.metadata.size) * source_get_ids.data_resolution
     )
+    _box_get_ids = (
+        np.array(
+            (
+                box_dict["lower_x"].value,
+                box_dict["lower_y"].value,
+                box_dict["lower_z"].value,
+            )
+        )
+        * _scaling_get_ids
+        * 0.01,
+        np.array(
+            (
+                box_dict["upper_x"].value,
+                box_dict["upper_y"].value,
+                box_dict["upper_z"].value,
+            )
+        )
+        * _scaling_get_ids
+        * 0.01,
+    )
+
+    result_get_ids = []
+    bbs_get_ids = [(o, bounding_box_delayed(o.mesh)) for o in orgs_get_ids]
+    bbs_get_ids = compute(*bbs_get_ids)
+
+    for o, bb in bbs_get_ids:
+        if np.all(bb[0] >= _box_get_ids[0]) and np.all(bb[1] <= _box_get_ids[1]):
+            result_get_ids.append(o.id)
+
+    first_get_ids = [
+        n.split("_")[0] if n.split("_")[0] != "" else "unnamed" for n in result_get_ids
+    ]
+    orgs_unique, counts_get_ids = np.unique(first_get_ids, return_counts=True)
+    orgs_str_get_ids = ", ".join([f"{o}_*" for o in orgs_unique])
+    counts_str_get_ids = ", ".join([str(c) for c in counts_get_ids])
+
+    df_get_ids = pd.DataFrame(result_get_ids, columns=["IDs"])
+
+    output_display_get_ids = mo.vstack(
+        [
+            mo.md(
+                f"**Organelles:** {orgs_str_get_ids}<br>**Counts:** {counts_str_get_ids}"
+            ),
+            mo.ui.table(
+                df_get_ids,
+                selection=None,
+                pagination=True,
+                page_size=10,
+                max_height=300,
+            ),
+        ]
+    )
+
+    output_display_get_ids
     return
 
 
