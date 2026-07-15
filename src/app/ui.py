@@ -563,15 +563,17 @@ def _(record_counts):
 
 
 @app.cell
-def _(record_counts, skel_analysis):
+def _(record_counts, skel_analysis, project):
     mo.stop(len(record_counts) < 1, "Skeleton Statistics")
-
-    mo.vstack(
-        [
-            mo.md("## Skeletonization Statistics"),
-            skel_analysis.get_dataframe(),
-        ]
+    _df = skel_analysis.get_dataframe()
+    _unit = list(project.sources.values())[0].metadata.unit
+    _df = _df.rename(
+        columns={
+            "total_length": f"total_length [{_unit}]",
+            "mean_radius": f"mean_radius [{_unit}]",
+        }
     )
+    mo.vstack([mo.md("## Skeletonization Statistics"), _df])
     return
 
 
