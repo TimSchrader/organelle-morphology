@@ -309,6 +309,14 @@ def _(change_settings_button, project, sources):
     )
     color_indiv_check = mo.ui.checkbox(label="Color individual organelles", value=False)
     popout_viewer_check = mo.ui.checkbox(label="High-quality viewer", value=False)
+    mesh_opacity_ui = mo.ui.slider(
+        label="with Mesh Opacity",
+        start=0.0,
+        stop=1.0,
+        value=1.0,
+        step=0.05,
+        show_value=True,
+    )
 
     mesh_rot_axis_ui = mo.ui.dropdown(
         options=["x", "y", "z"],
@@ -360,13 +368,8 @@ def _(change_settings_button, project, sources):
                 ],
                 justify="start",
             ),
-            mo.hstack(
-                [
-                    run_show_mesh,
-                    popout_viewer_check,
-                ],
-                justify="start",
-            ),
+            mo.hstack([popout_viewer_check, mesh_opacity_ui], justify="start"),
+            run_show_mesh,
         ]
     )
     return (
@@ -383,6 +386,7 @@ def _(change_settings_button, project, sources):
         mesh_export_name_ui,
         mesh_export_toggle_ui,
         mesh_id_filter,
+        mesh_opacity_ui,
         mesh_rot_angle_ui,
         mesh_rot_axis_ui,
         popout_viewer_check,
@@ -406,6 +410,7 @@ def show_mesh(
     mesh_export_name_ui,
     mesh_export_toggle_ui,
     mesh_id_filter,
+    mesh_opacity_ui,
     mesh_rot_angle_ui,
     mesh_rot_axis_ui,
     popout_viewer_check,
@@ -447,6 +452,7 @@ def show_mesh(
         ids_highlight=highlight,
         curvature=curvature_check.value,
         skeleton=skeleton_check.value,
+        opacity=mesh_opacity_ui.value,
         curv_log=log_check.value,
         color_instances=color_indiv_check.value,
         mcs_min=mcs_min,
