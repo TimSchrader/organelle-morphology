@@ -218,8 +218,14 @@ class DataSource:
                 .find("voxelSize")
             )
             _resolution_str = voxel_size_node.find("size").text
-            _unit = voxel_size_node.find("unit").text
+            _raw_unit = voxel_size_node.find("unit").text
             resolution = list((float(i) for i in _resolution_str.split(" ")))
+
+            if resolution[0] == resolution[1] == resolution[2]:
+                _unit = f"{resolution[0]} {_raw_unit.replace('micrometer', 'µm')}"
+            else:
+                _unit = "anisotropic voxel"
+
             first_timepoint = int(
                 xmldata.find("SequenceDescription")
                 .find("Timepoints")

@@ -577,6 +577,8 @@ def _(record_counts, skel_analysis, project):
         columns={
             "total_length": f"total_length [{_unit}]",
             "mean_radius": f"mean_radius [{_unit}]",
+            "mean_length": f"mean_mean length [{_unit}]",
+            "longest_path": f"longest_path [{_unit}]",
         }
     )
     mo.vstack([mo.md("## Skeletonization Statistics"), _df])
