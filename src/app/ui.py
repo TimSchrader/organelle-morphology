@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.13"
 app = marimo.App(
     width="medium",
     app_title="Organelle Morphology",
@@ -309,6 +309,14 @@ def _(change_settings_button, project, sources):
     )
     color_indiv_check = mo.ui.checkbox(label="Color individual organelles", value=False)
     popout_viewer_check = mo.ui.checkbox(label="High-quality viewer", value=False)
+    mesh_opacity_ui = mo.ui.slider(
+        label="with Mesh Opacity",
+        start=0.0,
+        stop=1.0,
+        value=1.0,
+        step=0.05,
+        show_value=True,
+    )
 
     mesh_rot_axis_ui = mo.ui.dropdown(
         options=["x", "y", "z"],
@@ -360,13 +368,8 @@ def _(change_settings_button, project, sources):
                 ],
                 justify="start",
             ),
-            mo.hstack(
-                [
-                    run_show_mesh,
-                    popout_viewer_check,
-                ],
-                justify="start",
-            ),
+            mo.hstack([popout_viewer_check, mesh_opacity_ui], justify="start"),
+            run_show_mesh,
         ]
     )
     return (
@@ -383,6 +386,7 @@ def _(change_settings_button, project, sources):
         mesh_export_name_ui,
         mesh_export_toggle_ui,
         mesh_id_filter,
+        mesh_opacity_ui,
         mesh_rot_angle_ui,
         mesh_rot_axis_ui,
         popout_viewer_check,
@@ -406,6 +410,7 @@ def show_mesh(
     mesh_export_name_ui,
     mesh_export_toggle_ui,
     mesh_id_filter,
+    mesh_opacity_ui,
     mesh_rot_angle_ui,
     mesh_rot_axis_ui,
     popout_viewer_check,
@@ -447,6 +452,7 @@ def show_mesh(
         ids_highlight=highlight,
         curvature=curvature_check.value,
         skeleton=skeleton_check.value,
+        opacity=mesh_opacity_ui.value,
         curv_log=log_check.value,
         color_instances=color_indiv_check.value,
         mcs_min=mcs_min,
@@ -563,15 +569,19 @@ def _(record_counts):
 
 
 @app.cell
-def _(record_counts, skel_analysis):
+def _(record_counts, skel_analysis, project):
     mo.stop(len(record_counts) < 1, "Skeleton Statistics")
-
-    mo.vstack(
-        [
-            mo.md("## Skeletonization Statistics"),
-            skel_analysis.get_dataframe(),
-        ]
+    _df = skel_analysis.get_dataframe()
+    _unit = list(project.sources.values())[0].metadata.unit
+    _df = _df.rename(
+        columns={
+            "total_length": f"total_length [{_unit}]",
+            "mean_radius": f"mean_radius [{_unit}]",
+            "mean_length": f"mean_mean length [{_unit}]",
+            "longest_path": f"longest_path [{_unit}]",
+        }
     )
+    mo.vstack([mo.md("## Skeletonization Statistics"), _df])
     return
 
 
@@ -611,57 +621,75 @@ def _(cache_info_button, project):
 
 
 @app.cell
-def _(box_dict, mesh_id_filter, project):
-    def ids_in_box(_):
-        orgs = project.get_organelles(ids=mesh_id_filter.value)
-        source = list(project.sources.values())[0]
-        _scaling = np.array(source.metadata.size) * source.data_resolution
-        _box = (
-            np.array(
-                (
-                    box_dict["lower_x"].value,
-                    box_dict["lower_y"].value,
-                    box_dict["lower_z"].value,
-                )
-            )
-            * _scaling
-            * 0.01,
-            np.array(
-                (
-                    box_dict["upper_x"].value,
-                    box_dict["upper_y"].value,
-                    box_dict["upper_z"].value,
-                )
-            )
-            * _scaling
-            * 0.01,
-        )
-        result = []
-        bbs = [(o, bounding_box_delayed(o.mesh)) for o in orgs]
-        bbs = compute(*bbs)
-        for o, bb in bbs:
-            if np.all(bb[0] >= _box[0]) and np.all(bb[1] <= _box[1]):
-                result.append(o.id)
+def get_ids_ui_cell():
+    get_ids_box_btn = mo.ui.run_button(label="Get IDs")
+    mo.md(f"<h3>Show IDs of Organelles in the box.</h3>{get_ids_box_btn}")
+    return (get_ids_box_btn,)
 
-        first = [n.split("_")[0] for n in result]
-        orgs, counts = np.unique(first, return_counts=True)
-        orgs = " , ".join([o + r"_\*" for o in orgs])
-        output = (
-            mo.md(f"Organelles: {orgs}<br>Counts: {counts}"),
-            pd.DataFrame(result, columns=["IDs"]),
-        )
 
-        mo.output.replace(output)
-        return result
+@app.cell
+def get_ids_execution_cell(box_dict, get_ids_box_btn, mesh_id_filter, project):
+    mo.stop(not get_ids_box_btn.value, mo.md("*Click 'Get IDs' to see results here.*"))
 
-    box_dict  # control flow
-    mesh_id_filter  # control flow
-    get_ids_box_ui = mo.ui.button(on_click=ids_in_box, label="Get IDs", value=None)
-    mo.md(
-        "<h3>Show IDs of Organelles in the box.</h3>"
-        "Change the box in the `Show mesh` panel.<br>"
-        f"{get_ids_box_ui}"
+    orgs_get_ids = project.get_organelles(ids=mesh_id_filter.value)
+    source_get_ids = list(project.sources.values())[0]
+    _scaling_get_ids = (
+        np.array(source_get_ids.metadata.size) * source_get_ids.data_resolution
     )
+    _box_get_ids = (
+        np.array(
+            (
+                box_dict["lower_x"].value,
+                box_dict["lower_y"].value,
+                box_dict["lower_z"].value,
+            )
+        )
+        * _scaling_get_ids
+        * 0.01,
+        np.array(
+            (
+                box_dict["upper_x"].value,
+                box_dict["upper_y"].value,
+                box_dict["upper_z"].value,
+            )
+        )
+        * _scaling_get_ids
+        * 0.01,
+    )
+
+    result_get_ids = []
+    bbs_get_ids = [(o, bounding_box_delayed(o.mesh)) for o in orgs_get_ids]
+    bbs_get_ids = compute(*bbs_get_ids)
+
+    for o, bb in bbs_get_ids:
+        if np.all(bb[0] >= _box_get_ids[0]) and np.all(bb[1] <= _box_get_ids[1]):
+            result_get_ids.append(o.id)
+
+    first_get_ids = [
+        n.split("_")[0] if n.split("_")[0] != "" else "unnamed" for n in result_get_ids
+    ]
+    orgs_unique, counts_get_ids = np.unique(first_get_ids, return_counts=True)
+    orgs_str_get_ids = ", ".join([f"{o}_*" for o in orgs_unique])
+    counts_str_get_ids = ", ".join([str(c) for c in counts_get_ids])
+
+    df_get_ids = pd.DataFrame(result_get_ids, columns=["IDs"])
+
+    output_display_get_ids = mo.vstack(
+        [
+            mo.md(
+                f"**Organelles:** {orgs_str_get_ids}<br>**Counts:** {counts_str_get_ids}"
+            ),
+            mo.ui.table(
+                df_get_ids,
+                selection=None,
+                pagination=True,
+                page_size=10,
+                max_height=300,
+            ),
+        ]
+    )
+
+    output_display_get_ids
     return
 
 
@@ -1425,11 +1453,16 @@ def _(record_counts, records_save_button, records_update_button):
     record_count_to_table = []
     if len(record_counts):
         record_count_to_table = record_counts
+    records_table = mo.ui.table(
+        record_count_to_table, selection=None, pagination=True, page_size=5
+    )
 
     mo.vstack(
         [
             mo.md("## Analysis Records"),
-            mo.ui.table(record_count_to_table, selection=None),
+            mo.vstack([records_table]).style(
+                {"max-height": "250px", "overflow-y": "auto"}
+            ),
             mo.hstack(
                 [
                     records_update_button,

@@ -426,6 +426,7 @@ class Project:
         rot_angle: Optional[float] = None,
         volume: Optional[float] = None,
         export: Optional[str] = None,
+        opacity: float = 1.0,
     ):
         """Display organelles in the project.
 
@@ -470,6 +471,8 @@ class Project:
             export: Optional path to export the visualization scene to a glb file.
                 If provided, the scene will be exported to this location.
                 Defaults to None.
+            opacity: Float between 0.0 and 1.0 to set mesh transparency.
+                Defaults to 1.0 (fully opaque).
 
         Returns:
             trimesh.Scene: The rendered scene containing all visualization elements.
@@ -678,6 +681,30 @@ class Project:
                 rot_line = _line_in_plane(rot_angle)
                 rot_line.colors = [(255, 100, 0, 255)]  # orange = current angle
                 to_show.append(rot_line)
+
+        if opacity < 1.0:
+            alpha = int(opacity * 255)
+            for item in to_show:
+                if isinstance(item, trimesh.Trimesh):
+                    try:
+                        # Update vertex and face colors
+                        if (
+                            hasattr(item.visual, "vertex_colors")
+                            and len(item.visual.vertex_colors) > 0
+                        ):
+                            vc = item.visual.vertex_colors.copy()
+                            vc[:, 3] = alpha
+                            item.visual.vertex_colors = vc
+
+                        if (
+                            hasattr(item.visual, "face_colors")
+                            and len(item.visual.face_colors) > 0
+                        ):
+                            fc = item.visual.face_colors.copy()
+                            fc[:, 3] = alpha
+                            item.visual.face_colors = fc
+                    except Exception:
+                        pass
 
         scene = show(to_show)
         if export:

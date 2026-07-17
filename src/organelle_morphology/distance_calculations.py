@@ -9,6 +9,7 @@ from dask.base import compute
 from dask.delayed import delayed
 from dask.distributed import span
 from scipy.spatial import KDTree
+import os
 
 import organelle_morphology
 from organelle_morphology.util import (
@@ -105,9 +106,11 @@ def make_domains(
     logger.debug("Calculating bounding boxes")
     bounding_boxes = []
     with span("dist_matrix_bounding_boxes"):
+        # Persist meshes into distributed cluster memory because Windows can't fork
+        persisted_meshes = client.persist(list(meshes))
         # with many meshes (20k) ~30% faster then computing directly:
         bounding_boxes = client.gather(
-            client.map(lambda m: m.compute().bounding_box.bounds, meshes)
+            client.map(lambda m: m.compute().bounding_box.bounds, persisted_meshes)
         )
     logger.debug(f"bounding_boxes {len(bounding_boxes)}")
     logger.debug("bounding boxes finished, stating overlap calculations")
@@ -120,7 +123,10 @@ def make_domains(
         tasks.append((box, bounding_boxes))
     # masks = list(map(lambda b: _check_overlap(b, bounding_boxes), tasks))
     t0 = time()
-    with Pool(processes=100) as pool:
+    n_procs = 100  # manually adjusted
+    if os.name == "nt":
+        n_procs = 60  # 63 is max on windows
+    with Pool(processes=n_procs) as pool:
         masks = pool.starmap(_check_overlap, tasks, chunksize=100)
     logger.debug(f"Organelle to domain attribution: {time() - t0}s")
 

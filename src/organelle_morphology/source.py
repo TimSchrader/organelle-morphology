@@ -60,6 +60,7 @@ class SourceMetadata(PropertyBlock):
     levels: tuple[str, ...]
     size: tuple[int, ...]
     resolution: tuple[float, ...]
+    unit: str
     name: str
     coarse_level: str
 
@@ -210,7 +211,21 @@ class DataSource:
                 .find("size")
                 .text
             )
-            resolution = list((float(i) for i in _resolution.split(" ")))
+            voxel_size_node = (
+                xmldata.find("SequenceDescription")
+                .find("ViewSetups")
+                .find("ViewSetup")
+                .find("voxelSize")
+            )
+            _resolution_str = voxel_size_node.find("size").text
+            _raw_unit = voxel_size_node.find("unit").text
+            resolution = list((float(i) for i in _resolution_str.split(" ")))
+
+            if resolution[0] == resolution[1] == resolution[2]:
+                _unit = f"{resolution[0]} {_raw_unit.replace('micrometer', 'µm')}"
+            else:
+                _unit = "anisotropic voxel"
+
             first_timepoint = int(
                 xmldata.find("SequenceDescription")
                 .find("Timepoints")
@@ -251,6 +266,7 @@ class DataSource:
             levels=tuple(self.timepoint.levels),
             size=tuple([int(i) for i in size.split(" ")][::-1]),
             resolution=tuple(resolution),
+            unit=_unit,
             name=name,
             coarse_level=coarse_level,
         )
@@ -890,7 +906,6 @@ class DataSource:
         meshes_chunked: np.ndarray,
         simplify: Optional[float] = None,
     ) -> dict[int, Delayed]:
-
         delayed_simplify_mesh = delayed(simplify_mesh)
 
         # get some statistics
