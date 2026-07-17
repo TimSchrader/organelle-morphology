@@ -13,7 +13,6 @@ from dask.base import compute
 from dask.delayed import Delayed
 from dask.distributed import Client, LocalCluster
 from trimesh import Trimesh
-import os
 
 from organelle_morphology.distance_calculations import (
     generate_distance_matrix,
@@ -126,18 +125,8 @@ class Project:
         self.use_cache = True
         self.debug = False
 
-        if client:
-            self.cluster = client.cluster
-            self.client = client
-        else:
-            cluster_kwargs = {"n_workers": n_workers}
-            if os.name == "nt":
-                # Windows hates many TCP sockets -> use threads
-                cluster_kwargs["processes"] = False
-
-            self.cluster = LocalCluster(**cluster_kwargs)
-            self.client = Client(self.cluster)
-
+        self.cluster = client.cluster if client else LocalCluster(n_workers=n_workers)
+        self.client = client if client else Client(self.cluster)
         self.n_workers = n_workers
 
     def __str__(self):
@@ -193,15 +182,10 @@ class Project:
             initialize(nthreads=args.threads)
             client = Client()
         else:
-            cluster_kwargs = {
-                "n_workers": args.workers,
-                "threads_per_worker": args.threads,
-            }
-            if os.name == "nt":
-                # Bypass Windows TCP socket exhaustion and 63-handle limit
-                cluster_kwargs["processes"] = False
-
-            cluster = LocalCluster(**cluster_kwargs)
+            cluster = LocalCluster(
+                n_workers=args.workers,
+                threads_per_worker=args.threads,
+            )
             client = Client(cluster)
 
         p = Project(

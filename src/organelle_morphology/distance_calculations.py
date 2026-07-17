@@ -106,9 +106,11 @@ def make_domains(
     logger.debug("Calculating bounding boxes")
     bounding_boxes = []
     with span("dist_matrix_bounding_boxes"):
+        # Persist meshes into distributed cluster memory because Windows can't fork
+        persisted_meshes = client.persist(list(meshes))
         # with many meshes (20k) ~30% faster then computing directly:
         bounding_boxes = client.gather(
-            client.map(lambda m: m.compute().bounding_box.bounds, meshes)
+            client.map(lambda m: m.compute().bounding_box.bounds, persisted_meshes)
         )
     logger.debug(f"bounding_boxes {len(bounding_boxes)}")
     logger.debug("bounding boxes finished, stating overlap calculations")
