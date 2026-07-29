@@ -569,7 +569,7 @@ def _(record_counts):
 
 
 @app.cell
-def _(record_counts, skel_analysis, project):
+def _(project, record_counts, skel_analysis):
     mo.stop(len(record_counts) < 1, "Skeleton Statistics")
     _df = skel_analysis.get_dataframe()
     _unit = list(project.sources.values())[0].metadata.unit
@@ -801,11 +801,11 @@ def mcs_calc_ui_cell(change_settings_button, project, sources):
         ]
     )
     return (
+        mcs_deduplicate_ui,
         mcs_filter1_ui,
         mcs_filter2_ui,
         mcs_max_dist_ui,
         mcs_min_dist_ui,
-        mcs_deduplicate_ui,
         mcs_overwrite_ui,
     )
 
@@ -875,11 +875,11 @@ def mcs_analysis_set_filter(mcs_analysis, project, record_counts):
 @app.cell
 def mcs_analysis_overview(
     mcs_analysis,
-    project,
-    record_counts,
+    mcs_deduplicate_ui,
     mcs_filter1_ui,
     mcs_filter2_ui,
-    mcs_deduplicate_ui,
+    project,
+    record_counts,
 ):
     mo.stop(
         not project.registry.get_by_type("McsData"),
@@ -902,11 +902,11 @@ def mcs_analysis_overview(
 @app.cell
 def mcs_analysis_properties(
     mcs_analysis,
-    project,
-    record_counts,
+    mcs_deduplicate_ui,
     mcs_filter1_ui,
     mcs_filter2_ui,
-    mcs_deduplicate_ui,
+    project,
+    record_counts,
 ):
     mo.stop(
         not project.registry.get_by_type("McsData"),
