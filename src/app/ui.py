@@ -577,7 +577,7 @@ def _(project, record_counts, skel_analysis):
         columns={
             "total_length": f"total_length [{_unit}]",
             "mean_radius": f"mean_radius [{_unit}]",
-            "mean_length": f"mean_mean length [{_unit}]",
+            "mean_length": f"mean_length [{_unit}]",
             "longest_path": f"longest_path [{_unit}]",
         }
     )

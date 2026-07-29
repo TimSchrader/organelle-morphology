@@ -222,7 +222,7 @@ class DataSource:
             resolution = list((float(i) for i in _resolution_str.split(" ")))
 
             if resolution[0] == resolution[1] == resolution[2]:
-                _unit = f"{resolution[0]} {_raw_unit.replace('micrometer', 'µm')}"
+                _unit = _raw_unit.replace("micrometer", "µm")
             else:
                 _unit = "anisotropic voxel"
 
