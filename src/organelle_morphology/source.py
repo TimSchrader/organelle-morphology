@@ -1248,7 +1248,7 @@ class DataSource:
             organelles_labeled[label].sampled_skeleton = sampled_skeleton
 
             meta = SkeletonMetaData(
-                organelle_id=label,
+                organelle_id=organelles_labeled[label].id,
                 method=skeletonization_type,
                 theta=theta,
                 path_sample_dist=path_sample_dist,
