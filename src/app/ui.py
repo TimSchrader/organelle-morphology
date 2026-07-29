@@ -781,6 +781,10 @@ def mcs_calc_ui_cell(change_settings_button, project, sources):
     mcs_min_dist_ui = mo.ui.number(value=0.0, label="Min distance threshold")
     mcs_filter1_ui = mo.ui.text(label="Labels 1", value="*")
     mcs_filter2_ui = mo.ui.text(label="Labels 2", value="*")
+    mcs_deduplicate_ui = mo.ui.checkbox(
+        value=True,
+        label="Deduplicate (Hide B->A if A->B exists)",
+    )
     mcs_overwrite_ui = mo.ui.checkbox(
         value=False, label="Overwrite existing mcs results"
     )
@@ -792,6 +796,7 @@ def mcs_calc_ui_cell(change_settings_button, project, sources):
             mcs_min_dist_ui,
             mcs_filter1_ui,
             mcs_filter2_ui,
+            mcs_deduplicate_ui,
             mcs_overwrite_ui,
         ]
     )
@@ -800,6 +805,7 @@ def mcs_calc_ui_cell(change_settings_button, project, sources):
         mcs_filter2_ui,
         mcs_max_dist_ui,
         mcs_min_dist_ui,
+        mcs_deduplicate_ui,
         mcs_overwrite_ui,
     )
 
@@ -867,14 +873,25 @@ def mcs_analysis_set_filter(mcs_analysis, project, record_counts):
 
 
 @app.cell
-def mcs_analysis_overview(mcs_analysis, project, record_counts):
+def mcs_analysis_overview(
+    mcs_analysis,
+    project,
+    record_counts,
+    mcs_filter1_ui,
+    mcs_filter2_ui,
+    mcs_deduplicate_ui,
+):
     mo.stop(
         not project.registry.get_by_type("McsData"),
         mo.md("No MCS calculations run yet"),
     )
     record_counts
     mo.ui.table(
-        mcs_analysis.get_mcs_overview().reset_index(),
+        mcs_analysis.get_mcs_overview(
+            filter1=mcs_filter1_ui.value,
+            filter2=mcs_filter2_ui.value,
+            deduplicate=mcs_deduplicate_ui.value,
+        ).reset_index(),
         page_size=14,
         selection=None,
         show_column_summaries=False,
@@ -883,13 +900,25 @@ def mcs_analysis_overview(mcs_analysis, project, record_counts):
 
 
 @app.cell
-def mcs_analysis_properties(mcs_analysis, project, record_counts):
+def mcs_analysis_properties(
+    mcs_analysis,
+    project,
+    record_counts,
+    mcs_filter1_ui,
+    mcs_filter2_ui,
+    mcs_deduplicate_ui,
+):
     mo.stop(
         not project.registry.get_by_type("McsData"),
         mo.md("No MCS calculations run yet"),
     )
     record_counts
-    mo.ui.table(mcs_analysis.get_mcs_properties(), selection=None, page_size=15)
+    mcs_analysis_properties_df = mcs_analysis.get_mcs_properties(
+        filter1=mcs_filter1_ui.value,
+        filter2=mcs_filter2_ui.value,
+        deduplicate=mcs_deduplicate_ui.value,
+    )
+    mo.ui.table(mcs_analysis_properties_df, selection=None, page_size=15)
     return
 
 
