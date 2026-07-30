@@ -1094,6 +1094,7 @@ def prop_selector_cell(project, sources):
         stats.get_mesh_properties()
         + stats.get_skeleton_properties()
         + stats.get_geometry_properties()
+        + stats.get_contact_properties()
     )
 
     # Convert the list of available_properties keys into a dictionary of checkboxes
