@@ -139,14 +139,49 @@ class TestMcsAnalysisFiltering:
         f1 = orgs[0]
         f2 = orgs[1]
 
+        # Prove the duplicate perspective exists when deduplicate is False
+        df_dupes = analysis_with_multiple_mcs.get_mcs_properties(
+            filter1=f1, filter2=f2, deduplicate=False
+        )
+        dupes_orgs = df_dupes.index.get_level_values("organelle").tolist()
+        assert f2 in dupes_orgs, (
+            "Organelle matching Filter 2 is missing even without deduplication."
+        )
+        assert f1 in dupes_orgs, "Organelle matching Filter 1 is missing."
+
+        edges = set()
+        for (label, org), row in df_dupes.iterrows():
+            for partner in row["partners"]:
+                edges.add((label, org, partner))
+
+        reciprocal_found = any(
+            (label, partner, org) in edges for (label, org, partner) in edges
+        )
+        assert reciprocal_found, "No duplication in raw data; test was useless"
+
+        cols_to_print = ["mean_dist", "partners"]
+        with pd.option_context(
+            "display.max_rows", None, "display.max_columns", None, "display.width", 1000
+        ):
+            print("---------- raw (deduplicate=False) ----------")
+            print(df_dupes[cols_to_print])
+
+        # Prove the duplicate perspective is removed when deduplicate is True
         df_dedup = analysis_with_multiple_mcs.get_mcs_properties(
             filter1=f1, filter2=f2, deduplicate=True
         )
         dedup_orgs = df_dedup.index.get_level_values("organelle").tolist()
 
+        with pd.option_context(
+            "display.max_rows", None, "display.max_columns", None, "display.width", 1000
+        ):
+            print("---------- deduplicated (deduplicate=True) ----------")
+            print(df_dedup[cols_to_print])
+
         assert f2 not in dedup_orgs, "Organelle matching Filter 2 was not dropped."
         assert f1 in dedup_orgs, "Organelle matching Filter 1 was incorrectly dropped."
 
+        # Prove the overall overview counts reflect the dropped duplicates
         overview_base = analysis_with_multiple_mcs.get_mcs_overview(
             filter1=f1, filter2=f2, deduplicate=False
         )
@@ -157,6 +192,6 @@ class TestMcsAnalysisFiltering:
         base_contacts = overview_base.loc[("overall", "total_contacts")].sum()
         dedup_contacts = overview_dedup.loc[("overall", "total_contacts")].sum()
 
-        assert dedup_contacts <= base_contacts, (
-            "Deduplicated contacts exceed raw contacts."
+        assert dedup_contacts < base_contacts, (
+            "Deduplicated contacts did not reduce raw contact sum."
         )
